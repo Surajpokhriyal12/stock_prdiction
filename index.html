@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>StockSense — Trend Predictor</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0a0c10;
+      --surface: #111419;
+      --surface2: #181c24;
+      --border: #1e2430;
+      --accent: #5ee7ff;
+      --accent2: #a78bfa;
+      --bull: #00d48a;
+      --bear: #ff4d6d;
+      --neutral: #f4a535;
+      --text: #e8eaf0;
+      --muted: #6b7280;
+      --font-display: 'Syne', sans-serif;
+      --font-body: 'DM Sans', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(94,231,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(94,231,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+    /* Header */
+    header {
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 36px;
+    }
+    .header-inner { display: flex; align-items: center; gap: 16px; }
+    .logo {
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .logo-dot { display: inline-block; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; margin-left: 4px; animation: pulse 2s infinite; vertical-align: middle; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(0.85)} }
+    .tagline { font-size: 13px; color: var(--muted); font-family: var(--font-mono); margin-left: auto; }
+
+    /* Search Bar */
+    .search-section { margin-bottom: 32px; }
+    .search-bar {
+      display: flex;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 8px 8px 8px 20px;
+      align-items: center;
+      transition: border-color .2s;
+    }
+    .search-bar:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(94,231,255,0.08); }
+    .search-bar input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .search-bar input::placeholder { color: var(--muted); font-size: 14px; text-transform: none; letter-spacing: 0; }
+    .period-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      outline: none;
+      cursor: pointer;
+    }
+    .search-btn {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      color: #0a0c10;
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 700;
+      padding: 12px 28px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+      letter-spacing: 0.5px;
+    }
+    .search-btn:hover { opacity: .9; transform: translateY(-1px); }
+    .search-btn:active { transform: translateY(0); }
+
+    .quick-tickers { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .quick-pill {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .quick-pill:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Loading */
+    #loading {
+      display: none;
+      text-align: center;
+      padding: 60px 0;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    #error-box {
+      display: none;
+      background: rgba(255,77,109,0.08);
+      border: 1px solid rgba(255,77,109,0.3);
+      border-radius: 12px;
+      padding: 16px 20px;
+      color: var(--bear);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    /* Results */
+    #results { display: none; animation: fadeUp .4s ease; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+
+    /* Stock Header */
+    .stock-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 24px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .stock-name-block { flex: 1; min-width: 200px; }
+    .stock-ticker {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--accent);
+      letter-spacing: 2px;
+      margin-bottom: 4px;
+    }
+    .stock-name {
+      font-family: var(--font-display);
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .price-block { text-align: right; }
+    .current-price {
+      font-family: var(--font-display);
+      font-size: 38px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .price-change {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .pos { color: var(--bull); }
+    .neg { color: var(--bear); }
+
+    /* Signal Badge */
+    .signal-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: 30px;
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 700;
+      border: 1.5px solid currentColor;
+      letter-spacing: 1px;
+      margin-top: 10px;
+    }
+    .signal-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1.5s infinite; }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      transition: border-color .2s;
+    }
+    .stat-card:hover { border-color: rgba(94,231,255,0.3); }
+    .stat-label { font-size: 11px; color: var(--muted); font-family: var(--font-mono); letter-spacing: 1px; margin-bottom: 6px; }
+    .stat-value { font-family: var(--font-mono); font-size: 16px; font-weight: 500; color: var(--text); }
+
+    /* RSI Meter */
+    .rsi-bar-wrap { margin-top: 6px; }
+    .rsi-bar {
+      height: 4px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--bull), var(--neutral), var(--bear));
+      position: relative;
+      margin-top: 6px;
+    }
+    .rsi-marker {
+      position: absolute;
+      top: -3px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: white;
+      transform: translateX(-50%);
+      box-shadow: 0 0 0 2px var(--bg);
+    }
+
+    /* Chart sections */
+    .chart-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .chart-title {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .chart-subtitle { font-size: 12px; color: var(--muted); margin-bottom: 20px; font-family: var(--font-mono); }
+    .chart-wrap { position: relative; height: 280px; }
+
+    /* Prediction summary */
+    .pred-summary {
+      display: flex;
+      gap: 20px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+    .pred-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 18px;
+      flex: 1;
+      min-width: 140px;
+    }
+    .pred-pill .label { font-size: 11px; color: var(--muted); font-family: var(--font-mono); letter-spacing: 1px; margin-bottom: 4px; }
+    .pred-pill .value { font-family: var(--font-mono); font-size: 15px; font-weight: 500; }
+
+    /* Disclaimer */
+    .disclaimer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      margin-top: 32px;
+      padding-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 600px) {
+      .stock-header { flex-direction: column; }
+      .price-block { text-align: left; }
+      .search-bar { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="header-inner">
+      <div class="logo">StockSense<span class="logo-dot"></span></div>
+      <div class="tagline">trend analysis & prediction</div>
+    </div>
+  </header>
+
+  <!-- Search -->
+  <div class="search-section">
+    <div class="search-bar">
+      <input type="text" id="tickerInput" placeholder="Enter ticker symbol (e.g. AAPL, TSLA, MSFT)" maxlength="10"/>
+      <select class="period-select" id="periodSelect">
+        <option value="3mo">3M</option>
+        <option value="6mo" selected>6M</option>
+        <option value="1y">1Y</option>
+        <option value="2y">2Y</option>
+      </select>
+      <button class="search-btn" onclick="fetchStock()">Analyze →</button>
+    </div>
+    <div class="quick-tickers">
+      <span class="quick-label" style="font-size:12px;color:var(--muted);padding:5px 0;font-family:var(--font-mono)">Quick:</span>
+      <span class="quick-pill" onclick="quickSearch('AAPL')">AAPL</span>
+      <span class="quick-pill" onclick="quickSearch('TSLA')">TSLA</span>
+      <span class="quick-pill" onclick="quickSearch('MSFT')">MSFT</span>
+      <span class="quick-pill" onclick="quickSearch('NVDA')">NVDA</span>
+      <span class="quick-pill" onclick="quickSearch('AMZN')">AMZN</span>
+      <span class="quick-pill" onclick="quickSearch('GOOGL')">GOOGL</span>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    Fetching market data...
+  </div>
+
+  <!-- Error -->
+  <div id="error-box"></div>
+
+  <!-- Results -->
+  <div id="results">
+    <!-- Stock Header -->
+    <div class="stock-header">
+      <div class="stock-name-block">
+        <div class="stock-ticker" id="rTicker"></div>
+        <div class="stock-name" id="rName"></div>
+        <div id="rSignal"></div>
+      </div>
+      <div class="price-block">
+        <div class="current-price" id="rPrice"></div>
+        <div class="price-change" id="rChange"></div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">RSI (14)</div><div class="stat-value" id="rRsi"></div><div class="rsi-bar-wrap"><div class="rsi-bar"><div class="rsi-marker" id="rRsiMarker"></div></div></div></div>
+      <div class="stat-card"><div class="stat-label">TREND SLOPE</div><div class="stat-value" id="rSlope"></div></div>
+      <div class="stat-card"><div class="stat-label">52W HIGH</div><div class="stat-value" id="r52H"></div></div>
+      <div class="stat-card"><div class="stat-label">52W LOW</div><div class="stat-value" id="r52L"></div></div>
+      <div class="stat-card"><div class="stat-label">P/E RATIO</div><div class="stat-value" id="rPE"></div></div>
+      <div class="stat-card"><div class="stat-label">MKT CAP</div><div class="stat-value" id="rMktCap"></div></div>
+    </div>
+
+    <!-- Price Chart -->
+    <div class="chart-section">
+      <div class="chart-title">Price History + Moving Averages</div>
+      <div class="chart-subtitle">Closing price with 7-day, 20-day, and 50-day moving averages</div>
+      <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+    </div>
+
+    <!-- Prediction Chart -->
+    <div class="chart-section">
+      <div class="chart-title">14-Day Price Prediction</div>
+      <div class="chart-subtitle">Linear trend extrapolation based on recent price momentum</div>
+      <div class="chart-wrap"><canvas id="predChart"></canvas></div>
+      <div class="pred-summary">
+        <div class="pred-pill"><div class="label">PREDICTED (DAY 7)</div><div class="value" id="pred7"></div></div>
+        <div class="pred-pill"><div class="label">PREDICTED (DAY 14)</div><div class="value" id="pred14"></div></div>
+        <div class="pred-pill"><div class="label">EXPECTED MOVE</div><div class="value" id="predMove"></div></div>
+      </div>
+    </div>
+
+    <!-- RSI Chart -->
+    <div class="chart-section">
+      <div class="chart-title">RSI — Relative Strength Index</div>
+      <div class="chart-subtitle">Above 70 = overbought · Below 30 = oversold</div>
+      <div class="chart-wrap" style="height:180px"><canvas id="rsiChart"></canvas></div>
+    </div>
+
+    <div class="disclaimer">
+      ⚠ StockSense uses simple trend analysis for educational purposes only.<br/>
+      This is NOT financial advice. Always consult a licensed financial advisor before investing.
+    </div>
+  </div>
+</div>
+
+<script>
+let priceChartInst, predChartInst, rsiChartInst;
+
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { labels: { color: '#6b7280', font: { family: 'DM Mono', size: 11 } } }, tooltip: { backgroundColor: '#181c24', borderColor: '#1e2430', borderWidth: 1, titleColor: '#e8eaf0', bodyColor: '#9ca3af', titleFont: { family: 'DM Mono' }, bodyFont: { family: 'DM Mono', size: 11 } } },
+  scales: {
+    x: { ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 8 }, grid: { color: '#1e2430' } },
+    y: { ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } }, grid: { color: '#1e2430' } }
+  }
+};
+
+function quickSearch(ticker) {
+  document.getElementById('tickerInput').value = ticker;
+  fetchStock();
+}
+
+async function fetchStock() {
+  const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+  const period = document.getElementById('periodSelect').value;
+  if (!ticker) return;
+
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('error-box').style.display = 'none';
+
+  try {
+    const res = await fetch(`/api/stock/${ticker}?period=${period}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Unknown error');
+    renderResults(data);
+  } catch (e) {
+    document.getElementById('error-box').style.display = 'block';
+    document.getElementById('error-box').textContent = `⚠ Error: ${e.message}`;
+  } finally {
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+function fmt(n, decimals=2) {
+  if (n == null) return 'N/A';
+  return '$' + Number(n).toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function fmtNum(n) {
+  if (n == null) return 'N/A';
+  if (n >= 1e12) return '$' + (n/1e12).toFixed(2) + 'T';
+  if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+  return '$' + n;
+}
+
+function renderResults(d) {
+  // Header
+  document.getElementById('rTicker').textContent = d.ticker;
+  document.getElementById('rName').textContent = d.name;
+  document.getElementById('rPrice').textContent = fmt(d.current_price);
+  document.getElementById('rPrice').style.color = d.price_change >= 0 ? 'var(--bull)' : 'var(--bear)';
+
+  const sign = d.price_change >= 0 ? '+' : '';
+  document.getElementById('rChange').innerHTML =
+    `<span class="${d.price_change >= 0 ? 'pos' : 'neg'}">${sign}${fmt(d.price_change)} (${sign}${d.price_change_pct}%)</span>`;
+
+  // Signal badge
+  document.getElementById('rSignal').innerHTML =
+    `<span class="signal-badge" style="color:${d.signal_color}"><span class="signal-dot"></span>${d.signal}</span>`;
+
+  // Stats
+  document.getElementById('rRsi').textContent = d.rsi;
+  const rsiPct = Math.min(Math.max(d.rsi, 0), 100);
+  document.getElementById('rRsiMarker').style.left = rsiPct + '%';
+  document.getElementById('rSlope').textContent = (d.slope > 0 ? '↑ +' : '↓ ') + d.slope + '/day';
+  document.getElementById('rSlope').style.color = d.slope > 0 ? 'var(--bull)' : 'var(--bear)';
+  document.getElementById('r52H').textContent = fmt(d['52w_high']);
+  document.getElementById('r52L').textContent = fmt(d['52w_low']);
+  document.getElementById('rPE').textContent = d.pe_ratio ? Number(d.pe_ratio).toFixed(1) : 'N/A';
+  document.getElementById('rMktCap').textContent = fmtNum(d.market_cap);
+
+  // Prediction summary
+  const pPrices = d.prediction.prices;
+  document.getElementById('pred7').textContent = fmt(pPrices[6]);
+  document.getElementById('pred14').textContent = fmt(pPrices[13]);
+  const move = pPrices[13] - d.current_price;
+  const movePct = ((move / d.current_price) * 100).toFixed(2);
+  const moveSign = move >= 0 ? '+' : '';
+  document.getElementById('predMove').textContent = `${moveSign}${fmt(move)} (${moveSign}${movePct}%)`;
+  document.getElementById('predMove').style.color = move >= 0 ? 'var(--bull)' : 'var(--bear)';
+
+  const hist = d.historical;
+  const shortDates = hist.dates.map(dt => dt.slice(5));
+
+  // Destroy old charts
+  if (priceChartInst) priceChartInst.destroy();
+  if (predChartInst) predChartInst.destroy();
+  if (rsiChartInst) rsiChartInst.destroy();
+
+  // Price Chart
+  priceChartInst = new Chart(document.getElementById('priceChart'), {
+    type: 'line',
+    data: {
+      labels: shortDates,
+      datasets: [
+        { label: 'Close', data: hist.closes, borderColor: '#5ee7ff', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true, backgroundColor: 'rgba(94,231,255,0.05)' },
+        { label: 'MA7', data: hist.ma7, borderColor: '#a78bfa', borderWidth: 1.5, pointRadius: 0, tension: 0.3, borderDash: [4,3] },
+        { label: 'MA20', data: hist.ma20, borderColor: '#f4a535', borderWidth: 1.5, pointRadius: 0, tension: 0.3, borderDash: [4,3] },
+        { label: 'MA50', data: hist.ma50, borderColor: '#ff4d6d', borderWidth: 1.5, pointRadius: 0, tension: 0.3, borderDash: [6,4] },
+      ]
+    },
+    options: { ...chartDefaults }
+  });
+
+  // Prediction Chart — last 30 days + 14 future
+  const last30 = hist.closes.slice(-30);
+  const last30Dates = shortDates.slice(-30);
+  const predDates = d.prediction.dates.map(dt => dt.slice(5));
+  const allPredDates = [...last30Dates, ...predDates];
+  const histPart = [...last30, ...Array(predDates.length).fill(null)];
+  const predPart = [...Array(last30.length - 1).fill(null), last30[last30.length - 1], ...d.prediction.prices];
+
+  predChartInst = new Chart(document.getElementById('predChart'), {
+    type: 'line',
+    data: {
+      labels: allPredDates,
+      datasets: [
+        { label: 'Historical', data: histPart, borderColor: '#5ee7ff', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+        { label: 'Predicted', data: predPart, borderColor: '#a78bfa', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.3, fill: true, backgroundColor: 'rgba(167,139,250,0.08)' }
+      ]
+    },
+    options: { ...chartDefaults }
+  });
+
+  // RSI Chart
+  rsiChartInst = new Chart(document.getElementById('rsiChart'), {
+    type: 'line',
+    data: {
+      labels: shortDates,
+      datasets: [
+        { label: 'RSI', data: hist.rsi, borderColor: '#f4a535', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
+        { label: 'Overbought (70)', data: Array(hist.rsi.length).fill(70), borderColor: 'rgba(255,77,109,0.4)', borderWidth: 1, pointRadius: 0, borderDash: [4,3] },
+        { label: 'Oversold (30)', data: Array(hist.rsi.length).fill(30), borderColor: 'rgba(0,212,138,0.4)', borderWidth: 1, pointRadius: 0, borderDash: [4,3] }
+      ]
+    },
+    options: {
+      ...chartDefaults,
+      scales: {
+        x: { ...chartDefaults.scales.x },
+        y: { ...chartDefaults.scales.y, min: 0, max: 100 }
+      }
+    }
+  });
+
+  document.getElementById('results').style.display = 'block';
+}
+
+document.getElementById('tickerInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') fetchStock();
+});
+</script>
+</body>
+</html>
